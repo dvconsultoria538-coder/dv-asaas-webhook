@@ -1,44 +1,58 @@
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
 export default async function handler(req, res) {
-  // Só aceita POST (padrão do Asaas)
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Método não permitido" });
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Método não permitido' });
   }
 
   try {
-    const event = req.body;
+    const payload = req.body;
+    console.log('Webhook Asaas recebido:', payload);
 
-    // Log para debug (aparece nos logs da Vercel)
-    console.log("Webhook Asaas recebido:", event);
+    const eventType = payload.event;
+    const payment = payload.payment;
 
-    const { event: eventType, payment } = event;
-
-    // Exemplo de eventos importantes
-    switch (eventType) {
-      case "PAYMENT_CONFIRMED":
-        console.log("Pagamento confirmado:", payment.id);
-        break;
-
-      case "PAYMENT_RECEIVED":
-        console.log("Pagamento recebido:", payment.id);
-        break;
-
-      case "PAYMENT_OVERDUE":
-        console.log("Pagamento vencido:", payment.id);
-        break;
-
-      case "PAYMENT_CANCELED":
-        console.log("Pagamento cancelado:", payment.id);
-        break;
-
-      default:
-        console.log("Evento não tratado:", eventType);
+    if (!payment) {
+      return res.status(200).json({ received: true });
     }
 
-    // Sempre responda 200 para o Asaas
+    const asaasCustomerId = payment.customer;
+    const asaasPaymentId = payment.id;
+    const status = payment.status;
+    const value = payment.value || 0;
+    const dueDate = payment.dueDate || null;
+    const paymentDate = payment.paymentDate || null;
+
+    // 🔹 Salva cliente (se ainda não existir)
+    await supabase
+      .from('asaas_clientes')
+      .upsert({
+        asaas_customer_id: asaasCustomerId
+      }, { onConflict: ['asaas_customer_id'] });
+
+    // 🔹 Salva / atualiza pagamento
+    await supabase
+      .from('asaas_pagamentos')
+      .upsert({
+        asaas_payment_id: asaasPaymentId,
+        asaas_customer_id: asaasCustomerId,
+        status,
+        valor: value,
+        data_registro: dueDate,
+        data_pagamento: paymentDate
+      }, { onConflict: ['asaas_payment_id'] });
+
     return res.status(200).json({ received: true });
+
   } catch (error) {
-    console.error("Erro no webhook Asaas:", error);
-    return res.status(500).json({ error: "Erro interno" });
+    console.error('Erro no webhook Asaas:', error);
+    return res.status(500).json({ error: 'Erro interno' });
   }
 }
+
 
