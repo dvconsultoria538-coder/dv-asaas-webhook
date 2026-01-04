@@ -1,57 +1,43 @@
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
-
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Método não permitido' });
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Método não permitido" });
   }
 
   try {
     const payload = req.body;
-    console.log('Webhook Asaas recebido:', payload);
 
-    const eventType = payload.event;
+    console.log("Webhook Asaas recebido:", payload);
+
+    const event = payload.event;
     const payment = payload.payment;
 
-    if (!payment) {
+    if (!event || !payment) {
       return res.status(200).json({ received: true });
     }
 
-    const asaasCustomerId = payment.customer;
-    const asaasPaymentId = payment.id;
-    const status = payment.status;
-    const value = payment.value || 0;
-    const dueDate = payment.dueDate || null;
-    const paymentDate = payment.paymentDate || null;
+    switch (event) {
+      case "PAYMENT_CREATED":
+        console.log("Pagamento criado:", payment.id);
+        break;
 
-    // 🔹 Salva cliente (se ainda não existir)
-    await supabase
-      .from('asaas_clientes')
-      .upsert({
-        asaas_customer_id: asaasCustomerId
-      }, { onConflict: ['asaas_customer_id'] });
+      case "PAYMENT_RECEIVED":
+      case "PAYMENT_CONFIRMED":
+        console.log("Pagamento confirmado:", payment.id);
+        // 👉 aqui depois você grava no Supabase
+        break;
 
-    // 🔹 Salva / atualiza pagamento
-    await supabase
-      .from('asaas_pagamentos')
-      .upsert({
-        asaas_payment_id: asaasPaymentId,
-        asaas_customer_id: asaasCustomerId,
-        status,
-        valor: value,
-        data_registro: dueDate,
-        data_pagamento: paymentDate
-      }, { onConflict: ['asaas_payment_id'] });
+      case "PAYMENT_OVERDUE":
+        console.log("Pagamento vencido:", payment.id);
+        break;
 
-    return res.status(200).json({ received: true });
+      default:
+        console.log("Evento ignorado:", event);
+    }
 
+    return res.status(200).json({ success: true });
   } catch (error) {
-    console.error('Erro no webhook Asaas:', error);
-    return res.status(500).json({ error: 'Erro interno' });
+    console.error("Erro no webhook:", error);
+    return res.status(200).json({ error: "Erro tratado" });
   }
 }
 
