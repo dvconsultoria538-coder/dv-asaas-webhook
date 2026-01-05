@@ -5,42 +5,31 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-export default function handler(req, res) {
+export default async function handler(req, res) {
   if (req.method !== "POST") {
-    res.status(405).end();
-    return;
+    return res.status(405).end();
   }
 
-  // ✅ RESPONDE E ENCERRA IMEDIATAMENTE (ASAAS NÃO PENALIZA)
-  res.status(200).json({ received: true });
+  const { event, payment } = req.body || {};
 
-  // ⛔ NADA DE TRY/CATCH ENVOLVENDO O RESPONSE
-  const payload = req.body;
-  if (!payload || !payload.event || !payload.payment) return;
+  // responde rápido ao Asaas
+  res.status(200).end();
 
-  const { event, payment } = payload;
+  // só salva pagamentos confirmados
+  if (!event || !payment) return;
 
-  // 🔥 PROCESSAMENTO TOTALMENTE DESACOPLADO
-  if (event === "PAYMENT_RECEIVED" || event === "PAYMENT_CONFIRMED") {
-    queueMicrotask(() => {
-      supabase
-        .from("asaas_pagamentos")
-        .insert({
-          asaas_payment_id: payment.id,
-          asaas_customer_id: payment.customer,
-          status: payment.status,
-          valor: payment.value,
-        })
-        .then(({ error }) => {
-          if (error) {
-            console.error("Erro Supabase:", error);
-          } else {
-            console.log("Pagamento salvo:", payment.id);
-          }
-        })
-        .catch((err) => {
-          console.error("Falha Supabase:", err);
-        });
+  if (event !== "PAYMENT_CONFIRMED" && event !== "PAYMENT_RECEIVED") return;
+
+  try {
+    await supabase.from("asaas_pagamentos").insert({
+      asaas_payment_id: payment.id,
+      asaas_customer_id: payment.customer,
+      status: payment.status,
+      valor: payment.value,
+      created_at: new Date().toISOString(),
     });
+  } catch (err) {
+    console.error("Erro Supabase:", err);
   }
 }
+
