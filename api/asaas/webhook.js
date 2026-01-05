@@ -7,25 +7,22 @@ const supabase = createClient(
 
 export default function handler(req, res) {
   if (req.method !== "POST") {
-    return res.status(405).json({ ok: false });
+    res.status(405).end();
+    return;
   }
 
-  // ✅ RESPONDE IMEDIATAMENTE AO ASAAS
+  // ✅ RESPONDE E ENCERRA IMEDIATAMENTE (ASAAS NÃO PENALIZA)
   res.status(200).json({ received: true });
 
+  // ⛔ NADA DE TRY/CATCH ENVOLVENDO O RESPONSE
   const payload = req.body;
-  const { event, payment } = payload || {};
+  if (!payload || !payload.event || !payload.payment) return;
 
-  if (!event || !payment) return;
+  const { event, payment } = payload;
 
-  try {
-    if (
-      event === "PAYMENT_RECEIVED" ||
-      event === "PAYMENT_CONFIRMED"
-    ) {
-      console.log("Pagamento confirmado:", payment.id);
-
-      // 🔥 SEM await (isso é o segredo)
+  // 🔥 PROCESSAMENTO TOTALMENTE DESACOPLADO
+  if (event === "PAYMENT_RECEIVED" || event === "PAYMENT_CONFIRMED") {
+    queueMicrotask(() => {
       supabase
         .from("asaas_pagamentos")
         .insert({
@@ -37,10 +34,13 @@ export default function handler(req, res) {
         .then(({ error }) => {
           if (error) {
             console.error("Erro Supabase:", error);
+          } else {
+            console.log("Pagamento salvo:", payment.id);
           }
+        })
+        .catch((err) => {
+          console.error("Falha Supabase:", err);
         });
-    }
-  } catch (err) {
-    console.error("Erro interno webhook:", err);
+    });
   }
 }
