@@ -4,7 +4,8 @@ const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
-export default async function handler(req, res) {
+
+export default function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false });
   }
@@ -12,34 +13,33 @@ export default async function handler(req, res) {
   // ✅ RESPONDE IMEDIATAMENTE AO ASAAS
   res.status(200).json({ received: true });
 
+  const payload = req.body;
+  const { event, payment } = payload || {};
+
+  if (!event || !payment) return;
+
   try {
-    const payload = req.body;
+    if (
+      event === "PAYMENT_RECEIVED" ||
+      event === "PAYMENT_CONFIRMED"
+    ) {
+      console.log("Pagamento confirmado:", payment.id);
 
-    console.log("Webhook Asaas:", payload);
-
-    const { event, payment } = payload;
-
-    if (!event || !payment) return;
-
-    // 👉 PROCESSAMENTO EM BACKGROUND
-    switch (event) {
-      case "PAYMENT_CREATED":
-        console.log("Pagamento criado:", payment.id);
-        break;
-
-      case "PAYMENT_RECEIVED":
-      case "PAYMENT_CONFIRMED":
-        console.log("Pagamento confirmado:", payment.id);
-        break;
-
-      case "PAYMENT_OVERDUE":
-        console.log("Pagamento vencido:", payment.id);
-        break;
-
-      default:
-        console.log("Evento ignorado:", event);
+      // 🔥 SEM await (isso é o segredo)
+      supabase
+        .from("asaas_pagamentos")
+        .insert({
+          asaas_payment_id: payment.id,
+          asaas_customer_id: payment.customer,
+          status: payment.status,
+          valor: payment.value,
+        })
+        .then(({ error }) => {
+          if (error) {
+            console.error("Erro Supabase:", error);
+          }
+        });
     }
-
   } catch (err) {
     console.error("Erro interno webhook:", err);
   }
